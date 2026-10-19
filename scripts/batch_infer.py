@@ -31,9 +31,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--device", default=None, choices=["cuda", "mps", "cpu"])
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--stride", type=int, default=1)
+    p.add_argument("--output-fps", type=int, default=None, choices=[24, 30, 60],
+                   help="输出视频目标帧率；不选则跟随源帧率")
     p.add_argument("--max-frames", type=int, default=None, help="每个视频只处理前 N 帧（冒烟测试用）")
     p.add_argument("--smooth-alpha", type=float, default=None)
     p.add_argument("--no-download", action="store_true", help="禁止自动下载缺失权重")
+    p.add_argument("--no-progress", action="store_true", help="关闭 tqdm 进度条")
     args = p.parse_args(argv)
 
     in_dir = Path(args.input_dir)
@@ -56,9 +59,11 @@ def main(argv: list[str] | None = None) -> int:
                     device=args.device,
                     batch_size=args.batch_size,
                     stride=args.stride,
+                    output_fps=args.output_fps,
                     max_frames=args.max_frames,
                     smooth_alpha=args.smooth_alpha,
                     allow_download=not args.no_download,
+                    show_progress=False if args.no_progress else None,
                 )
             )
         except Exception as exc:  # 单个失败不中断整批

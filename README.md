@@ -25,6 +25,7 @@
 - [常用配方](#常用配方)
 - [在 Python 代码里使用](#在-python-代码里使用)
 - [输出说明](#输出说明)
+- [输出帧率选择（--output-fps）](#输出帧率--output-fps)
 - [模型规格选择](#模型规格选择)
 - [重要：输出是相对深度](#重要输出是相对深度)
 - [目录约定](#目录约定)
@@ -135,6 +136,7 @@ uv run python scripts/depth_video.py --input <视频> [选项]
 | `--models-dir` | | `models` | 本地权重根目录 |
 | `--batch-size` | | `4` | 单次前向推理帧数（GPU 可 8~16；MPS/CPU 建议 1~4） |
 | `--stride` | | `1` | 抽帧步长，>1 加速预览，输出帧率同比降低 |
+| `--output-fps` | | 跟随源 | 输出 mp4 目标帧率，可选 `24` / `30` / `60`（详见[输出帧率](#输出帧率--output-fps)）；不选则 = 源帧率/stride |
 | `--max-frames` | | 全部 | 只处理前 N 帧（调参、看效果） |
 | `--smooth-alpha` | | 关 | 时序因果 EMA 平滑，取值 `(0, 1]`，越小越平滑（如 `0.5`） |
 | `--dark-near` | | 关 | 反转为“近暗远亮”（默认近=亮） |
@@ -196,6 +198,7 @@ uv run python scripts/batch_infer.py --input-dir <目录> [选项]
 | `--device` | 自动 | `cuda` / `mps` / `cpu` |
 | `--batch-size` | `4` | 单次前向帧数 |
 | `--stride` | `1` | 抽帧步长 |
+| `--output-fps` | 跟随源 | 输出目标帧率 `24`/`30`/`60` |
 | `--max-frames` | 全部 | 每个视频只处理前 N 帧（冒烟测试） |
 | `--smooth-alpha` | 关 | 时序 EMA 平滑强度 |
 | `--no-download` | 关 | 禁止自动下载缺失权重 |
@@ -237,6 +240,40 @@ uv run python evaluation/eval.py \
     --pred data/outputs/sample_depth_frames \
     --gt data/gt/sample --align
 ```
+
+---
+
+## 输出帧率（`--output-fps`）
+
+输出的深度 mp4 可以指定一个**目标播放帧率**，只从 `24 / 30 / 60` 三个预设里选（上限锁 60）：
+
+| 取值 | 适用 | 说明 |
+|---|---|---|
+| 不指定（默认） | 保持原样 | 输出帧率 = 源帧率 / `stride`，不额外重采样 |
+| `24` | 电影感 / 减小体积 | 每秒 24 帧，文件更小 |
+| `30` | 通用网络视频 | 日常流畅，最常见 |
+| `60` | 顺滑预览 | 每秒 60 帧，动态更连贯 |
+
+```bash
+# 把输出统一到 30fps
+uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --output-fps 30
+
+# 输出 60fps（源若是 30fps，会复制帧填充，见下方注意）
+uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --output-fps 60
+```
+
+### ⚠ 关于帧率的两个真相
+
+1. **`--output-fps` 只改播放帧率，不改模型算了多少帧。**
+   模型对哪些帧做深度推断完全由 `--stride` 决定；`--output-fps` 是在写 mp4 时对已算好的深度序列做**最近邻时间重采样**：
+   - 目标 **低于** 已算帧率 → **丢帧**（输出更少帧，时长不变）；
+   - 目标 **高于** 已算帧率 → **复制帧**（同一帧重复写，让容器报告更高 fps）。
+   复制帧**不会新增真实动作**，只是把同一张深度图多显示几帧——所以追求真实高帧率应当用更小的 `stride`（多算帧），而不是只调大 `--output-fps`。
+2. **没有真正的“补帧/插帧”。** 想从 30fps 得到丝般顺滑的 60fps，需要光流帧插值（如 RIFE），本项目未内置；当前上限 60 已避开 120/240 那种“假高帧”的大倍数复制。
+
+> 想**减少计算量**用 `--stride`（少算帧）；想**统一输出规格/交付帧率**用 `--output-fps`。二者可组合：例如 `--stride 2 --output-fps 30` 表示隔帧算深度、再重采样到 30fps 播放。
+
+摘要 JSON 里会同时给出 `frames`（模型实际算的深度帧数）与 `output_frames`（重采样后写入 mp4 的帧数），以及 `fps_in / fps_proc / fps_out` 便于核对。
 
 ---
 

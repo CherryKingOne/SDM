@@ -13,6 +13,7 @@ dependencies = [
     "imageio[ffmpeg]>=2.34",
     "pillow>=10",
     "pyyaml>=6",
+    "tqdm>=4.66",
 ]
 
 [dependency-groups]

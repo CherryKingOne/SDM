@@ -64,6 +64,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--models-dir", default=cfg.get("models_dir"), help="本地权重根目录，默认项目 models/")
     p.add_argument("--batch-size", type=int, default=cfg.get("batch_size", 4))
     p.add_argument("--stride", type=int, default=cfg.get("stride", 1), help="抽帧步长，>1 用于快速预览")
+    p.add_argument(
+        "--output-fps", type=int, default=cfg.get("output_fps"), choices=[24, 30, 60],
+        help="输出视频目标帧率（对已算深度序列最近邻重采样）；不选则跟随源帧率",
+    )
     p.add_argument("--max-frames", type=int, default=cfg.get("max_frames"))
     p.add_argument("--smooth-alpha", type=float, default=cfg.get("smooth_alpha"), help="时序 EMA 平滑强度 (0,1]")
     p.add_argument("--dark-near", action="store_true", help="反转为近暗远亮")
@@ -73,6 +77,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--no-download", action="store_true",
         help="禁止自动下载：本地 models/ 里缺权重时直接报错（默认会自动下载）",
+    )
+    p.add_argument(
+        "--no-progress", action="store_true",
+        help="关闭 tqdm 进度条（默认仅在终端显示；非终端环境自动静默）",
     )
     args = p.parse_args(argv)
     if not 0 < (args.smooth_alpha or 1) <= 1:
@@ -98,12 +106,14 @@ def main(argv: list[str] | None = None) -> int:
             models_dir=models_dir,
             batch_size=args.batch_size,
             stride=args.stride,
+            output_fps=args.output_fps,
             max_frames=args.max_frames,
             smooth_alpha=args.smooth_alpha,
             near_is_bright=not args.dark_near,
             colormap=COLORMAPS[args.colormap] if args.colormap else None,
             png16_dir=args.png16,
             allow_download=not args.no_download,
+            show_progress=False if args.no_progress else None,
         )
     except KeyError as exc:  # 规格不可用：给一行清晰提示，不刷 traceback
         print(f"[sdm] {exc.args[0] if exc.args else exc}")
