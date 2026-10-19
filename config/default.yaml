@@ -1,0 +1,13 @@
+# SDM 默认运行配置
+# 命令行参数优先级高于本文件
+
+model: small          # small | base | large | giant
+device: null          # null=自动(cuda>mps>cpu) | cuda | mps | cpu
+batch_size: 4
+stride: 1             # >1 抽帧加速（输出帧率同比降低），预览建议 2~5
+max_frames: null      # 调试时限制帧数
+smooth_alpha: null    # 给定时做时序 EMA 平滑，如 0.5
+near_is_bright: true  # true=近亮远暗
+colormap: null        # 如 inferno / viridis 则额外输出伪彩视频
+png16_dir: null       # 如 data/outputs/clip_depth_frames 则导出 16bit 无损深度序列
+models_dir: models    # 本地权重根目录

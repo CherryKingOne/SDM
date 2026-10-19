@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# uv / 虚拟环境
+.venv/
+
+# 模型权重（由 scripts/download_models.py 获取）
+models/Depth-Anything-V2-*/
+
+# 数据：输入素材与生成结果（体积大/可重生，不进版本库，但保留目录结构）
+data/inputs/*
+data/outputs/*
+!data/inputs/.gitkeep
+!data/outputs/.gitkeep
+
+# macOS
+.DS_Store
+
+# 临时验证目录（自动下载功能的探针产物，可安全删除）
+.tmp_probe*/
