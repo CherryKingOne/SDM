@@ -2,7 +2,8 @@
 # 命令行参数优先级高于本文件
 
 model: small          # small | base | large | giant
-device: null          # null=自动(cuda>mps>cpu) | cuda | mps | cpu
+device: null          # null=默认 CPU | cuda(GPU) | mps；要用 GPU 请显式写 cuda
+backend: torch        # torch | tensorrt(需 device=cuda + 已装 TensorRT，否则自动回退 torch)
 batch_size: 4
 stride: 1             # >1 抽帧加速（输出帧率同比降低），预览建议 2~5
 output_fps: null      # 输出 mp4 目标帧率：null=跟随源(fps_in/stride) | 24 | 30 | 60

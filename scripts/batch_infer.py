@@ -28,7 +28,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--input-dir", required=True)
     p.add_argument("--output-dir", default=None, help="默认 data/outputs")
     p.add_argument("--model", default="small", choices=sorted(MODELS))
-    p.add_argument("--device", default=None, choices=["cuda", "mps", "cpu"])
+    p.add_argument("--device", default=None, choices=["cuda", "mps", "cpu"],
+                   help="计算设备；不传默认 CPU")
+    p.add_argument("--backend", default="torch", choices=["torch", "tensorrt"],
+                   help="推理后端；tensorrt 需 --device cuda + 已装 TensorRT，否则自动回退 torch")
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--stride", type=int, default=1)
     p.add_argument("--output-fps", type=int, default=None, choices=[24, 30, 60],
@@ -63,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
                     max_frames=args.max_frames,
                     smooth_alpha=args.smooth_alpha,
                     allow_download=not args.no_download,
+                    backend=args.backend,
                     show_progress=False if args.no_progress else None,
                 )
             )

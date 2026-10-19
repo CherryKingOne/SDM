@@ -4,7 +4,11 @@
 权重可先由 scripts/download_models.py 下载到本地 `models/` 目录，
 存在本地副本（含 config.json）时优先从本地加载，否则回退到 HF 在线仓库。
 
-设备/精度自适应：优先 CUDA → Apple MPS → CPU；GPU 上默认 fp16。
+设备/精度自适应：**默认 CPU**；仅当显式 `--device cuda/mps` 时才用对应设备。
+（GPU 上默认 fp16。可用 `available_devices()` 查询本机支持哪些设备。）
+
+推理后端与设备解耦：`--backend torch`（默认）走 transformers 原生前向；
+`--backend tensorrt` 需 `--device cuda` + 已安装 TensorRT，见 `sdm.tensorrt`。
 """
 
 from __future__ import annotations
@@ -49,14 +53,18 @@ def available_devices() -> list[str]:
 
 
 def pick_device(device: str | None = None) -> torch.device:
-    """显式指定则校验可用，否则按 cuda > mps > cpu 自动选择。"""
-    if device is not None:
-        if device == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("指定了 cuda，但当前环境不可用")
-        if device == "mps" and not torch.backends.mps.is_available():
-            raise RuntimeError("指定了 mps，但当前环境不可用")
-        return torch.device(device)
-    return torch.device(available_devices()[0])
+    """不指定则用 **CPU**（服务器默认行为）；显式指定则校验可用后使用。
+
+    历史版本会在 device=None 时自动优选 CUDA，现改为默认 CPU：
+    要用 GPU 必须显式传 `--device cuda`（或 mps），避免在共享服务器上误占卡。
+    """
+    if device is None:
+        return torch.device("cpu")
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("指定了 cuda，但当前环境不可用")
+    if device == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("指定了 mps，但当前环境不可用")
+    return torch.device(device)
 
 
 def _is_loadable_hf_dir(path: Path) -> bool:

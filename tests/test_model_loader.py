@@ -87,6 +87,12 @@ def test_available_devices_always_ends_with_cpu():
     assert available_devices()[-1] == "cpu"
 
 
+def test_pick_device_defaults_to_cpu():
+    """不传 device 时默认 CPU（不再自动优选 cuda）；要用 GPU 必须显式 --device cuda。"""
+    assert pick_device(None).type == "cpu"
+    assert pick_device().type == "cpu"
+
+
 def test_pick_device_rejects_unavailable_cuda():
     try:
         import torch

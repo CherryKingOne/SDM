@@ -90,7 +90,9 @@ uv run python scripts/download_models.py --sizes small
 时序平滑实测（large + 720×480，20 帧）：帧间平均绝对差由 0.0236 降到 0.0181（**-23%**），
 代价是运动边缘会有轻微拖影，建议 `--smooth-alpha 0.4~0.7` 取中。
 
-- 设备自动选择 `cuda → mps → cpu`，`--device` 可强制；GPU 上默认 fp16 省内存。
+- 设备**默认 CPU**；要用 GPU 必须显式 `--device cuda`（或 `mps`），GPU/MPS 上默认 fp16 省内存。
+- 推理后端 `--backend torch`（默认）/ `tensorrt`。后者面向 NVIDIA GPU 服务器，需 `--device cuda` + 已装
+  TensorRT；不可用时**自动回退 torch 并打警告**。集成方式 ONNX→engine，预构建见 `scripts/build_trt_engine.py`。
 - 处理速度瓶颈通常在逐帧前向：优先 `--stride`（抽帧）与降分辨率，而不是换更小的模型。
 
 ## 4. 关键参数
@@ -127,6 +129,9 @@ uv run python scripts/download_models.py --sizes small
 ## 7. 测试
 
 ```bash
-uv run pytest -q                 # 离线：纯数值 + 桩 estimator 端到端（不需权重）
+uv run pytest -q                 # 离线：纯数值 + 桩 estimator 端到端（不需权重/GPU/TensorRT）
 SDM_MODEL_TEST=1 uv run pytest -q  # 逐个实测本地已下载的规格（缺的自动 skip）
 ```
+
+TensorRT 相关测试（`tests/test_tensorrt.py`）全部离线可跑：后端回退决策、导入门控、命名/参数校验不需 GPU；
+真正依赖 `import tensorrt` 的冒烟用例在无 TRT 环境（如本地 Mac）自动 skip。

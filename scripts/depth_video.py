@@ -60,7 +60,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model", "-m", default=cfg.get("model", "small"), choices=MODEL_CHOICES,
         help="模型规格（giant 无 transformers 格式权重，不可用）",
     )
-    p.add_argument("--device", default=cfg.get("device"), choices=["cuda", "mps", "cpu"])
+    p.add_argument("--device", default=cfg.get("device"), choices=["cuda", "mps", "cpu"],
+                   help="计算设备；不传默认 CPU，--device cuda 用 GPU")
+    p.add_argument(
+        "--backend", default=cfg.get("backend", "torch"), choices=["torch", "tensorrt"],
+        help="推理后端；tensorrt 需 --device cuda + 已装 TensorRT，否则自动回退 torch",
+    )
     p.add_argument("--models-dir", default=cfg.get("models_dir"), help="本地权重根目录，默认项目 models/")
     p.add_argument("--batch-size", type=int, default=cfg.get("batch_size", 4))
     p.add_argument("--stride", type=int, default=cfg.get("stride", 1), help="抽帧步长，>1 用于快速预览")
@@ -113,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             colormap=COLORMAPS[args.colormap] if args.colormap else None,
             png16_dir=args.png16,
             allow_download=not args.no_download,
+            backend=args.backend,
             show_progress=False if args.no_progress else None,
         )
     except KeyError as exc:  # 规格不可用：给一行清晰提示，不刷 traceback

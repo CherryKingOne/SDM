@@ -8,7 +8,8 @@
 模型统一通过 Hugging Face **`transformers`** 的 `AutoModelForDepthEstimation` 加载，本地无权重时会自动下载安装。
 
 - 依赖用 **uv** 管理（不用 conda、不用 requirements.txt）
-- 设备自动选择 `cuda → mps → cpu`，GPU/MPS 默认 fp16
+- 设备**默认 CPU**；GPU 需显式 `--device cuda`（或 `mps`），GPU/MPS 上默认 fp16
+- 可选 **TensorRT 加速**：`--backend tensorrt` 需 `--device cuda` + 服务器装好 TensorRT；不可用时自动回退 torch
 - 长视频两趟（two-pass）流式管线，不把整段 float 深度堆进内存
 - 全序列统一归一化，抑制深度视频“闪烁/呼吸”
 
@@ -30,6 +31,7 @@
 - [输出说明](#输出说明)
 - [输出帧率选择（--output-fps）](#输出帧率--output-fps)
 - [模型规格选择](#模型规格选择)
+- [TensorRT 加速（服务器可选）](#tensorrt-加速服务器可选)
 - [重要：输出是相对深度](#重要输出是相对深度)
 - [目录约定](#目录约定)
 - [测试](#测试)
@@ -137,7 +139,8 @@ uv run python scripts/depth_video.py --input <视频> [选项]
 | `--input` | `-i` | （必填） | 输入视频路径 |
 | `--output` | `-o` | `data/outputs/<名>_depth.mp4` | 输出视频路径 |
 | `--model` | `-m` | `small` | 模型规格 `small` / `base` / `large`（`giant` 无 transformers 格式，选中会清晰报错） |
-| `--device` | | 自动 | `cuda` / `mps` / `cpu`，默认按 cuda→mps→cpu 自动选 |
+| `--device` | | `cpu` | `cuda` / `mps` / `cpu`；**不传默认 CPU**，要 GPU 请显式 `--device cuda` |
+| `--backend` | | `torch` | 推理后端 `torch` / `tensorrt`；`tensorrt` 需 `--device cuda` + 已装 TensorRT，否则自动回退 torch（见 [TensorRT 加速](#tensorrt-加速服务器可选)） |
 | `--models-dir` | | `models` | 本地权重根目录 |
 | `--batch-size` | | `4` | 单次前向推理帧数（GPU 可 8~16；MPS/CPU 建议 1~4） |
 | `--stride` | | `1` | 抽帧步长，>1 加速预览，输出帧率同比降低 |
@@ -282,6 +285,41 @@ uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --output-fps 60
 
 ---
 
+## TensorRT 加速（服务器可选）
+
+面向 **NVIDIA GPU 服务器**提供可选的 TensorRT 后端（`--backend tensorrt`），把主干前向编译成
+engine 以获得高吞吐。本机（macOS/CPU）无 TensorRT，代码**惰性导入**，跑普通 `--backend torch` 即可。
+
+> 集成方式：**ONNX → TensorRT engine**。`tensorrt` 本体不入共享 `uv.lock`（macOS 无兼容 wheel 会构建失败），
+> 需在目标服务器分两步安装：
+
+```bash
+# 1) 装辅助依赖（onnx，导出用）
+uv sync --group dev --group trt
+# 2) 从 NVIDIA 源装 tensorrt 本体（带 CUDA 的 Linux 机器）
+uv pip install "tensorrt>=10,<11" --extra-index-url https://pypi.nvidia.com/
+```
+
+engine **不可跨 GPU 架构 / TensorRT 版本复用**，须在使用它的目标机上构建（首次 `--backend tensorrt`
+会自动触发构建，但**建议预构建**以免任务卡在构建上）：
+
+```bash
+# 预构建 engine（按目标视频分辨率构建，缺省 518×518）
+uv run python scripts/build_trt_engine.py --model base --precision fp16 \
+    --height 480 --width 720 --opt-batch 4 --max-batch 16
+
+# 用 TensorRT 跑视频（必须 --device cuda）
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m base \
+    --device cuda --backend tensorrt --batch-size 8
+```
+
+要点：
+- `--backend` 与 `--device` 解耦：只有 `--device cuda` + 已装 TensorRT 才走 TRT，否则**打警告并自动回退 torch**。
+- engine 与**分辨率绑定**（processor resize 到 14 的倍数），换分辨率命中不同缓存并重建；产物落在 `models/trt/`。
+- 预处理仍用 HF processor，与 torch 后端逐位一致；`--batch-size` 需 ≤ 构建时的 `--max-batch`。
+
+---
+
 ## 常用配方
 
 ```bash
@@ -358,7 +396,7 @@ path = ensure_model("large")              # 检测本地 large 权重，缺失�
 | `large` | `Depth-Anything-V2-Large-hf` | ~335M | ~1.3GB | 高精度，建议 `--stride 2` 并控制分辨率 |
 | `giant` | — | ~1.3B | — | ❌ HF 无 `-hf` 版，不能用 transformers 加载 |
 
-设备按 `cuda → mps → cpu` 自动选择，GPU/MPS 默认 fp16，可用 `--device` 覆盖。
+设备**默认 CPU**；要 GPU 显式传 `--device cuda`（或 `mps`），GPU/MPS 上默认 fp16。追求推理高吞吐可在服务器叠加 `--backend tensorrt`（见下）。
 瓶颈通常在逐帧前向：优先 `--stride`（抽帧）与降分辨率，而不是换更小模型。
 
 ### ⚠ 仓库后缀是个坑
@@ -384,8 +422,8 @@ DA V2 这四个意识头模型输出的是 **relative depth（disparity，值越
 data/inputs/    放你要处理的原始视频（输入区，只读，gitignore）
 data/outputs/   放模型算出的深度视频/帧序列（输出区，可随时清空重跑，gitignore）
 models/         模型权重（gitignore，缺失时自动下载到这里）
-src/sdm/        核心包：model_loader / estimator / video_pipeline / postprocess / temporal / utils
-scripts/        CLI 入口：depth_video / download_models / batch_infer
+src/sdm/        核心包：model_loader / estimator / video_pipeline / postprocess / temporal / tensorrt(可选后端) / utils
+scripts/        CLI 入口：depth_video / download_models / batch_infer / build_trt_engine(预构建 TRT engine)
 evaluation/     指标评估：eval / metrics
 tests/          离线可跑的测试
 config/         default.yaml 运行默认配置

@@ -20,6 +20,14 @@ dependencies = [
 dev = [
     "pytest>=8",
 ]
+# 服务器（NVIDIA GPU / Linux）专用：TensorRT 加速后端辅助依赖。
+# ⚠ tensorrt 本体不入共享 lock（它的 PyPI 占位包需联网到 pypi.nvidia.com，macOS 无兼容 wheel 会构建失败），
+#   故在目标服务器上单独装（见下）。
+#   1) uv sync --group trt            # 装 onnx（导出 ONNX 用）
+#   2) uv pip install "tensorrt>=10,<11" --extra-index-url https://pypi.nvidia.com/
+trt = [
+    "onnx>=1.16",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

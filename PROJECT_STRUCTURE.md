@@ -60,8 +60,9 @@ SDM/
 │   └── sdm/                         # ★ 核心 Python 包（uv src-layout）
 │       ├── __init__.py              # 导出顶层 API（DepthEstimator / estimate_video_depth 等）
 │       ├── model_loader.py          # ★ transformers 加载封装：规格名 → HF 仓库 ID / 本地路径，
-│       │                            #   device/dtype 自适应（cuda>mps>cpu），本地权重优先
-│       ├── estimator.py             # 单帧/批量推理：processor → model 前向 → 上采样回原尺寸
+│       │                            #   设备**默认 CPU**（--device cuda/mps 显式启用），本地权重优先
+│       ├── estimator.py             # 单帧/批量推理 + resolve_backend（torch/tensorrt 选择与回退）
+│       ├── tensorrt.py              # 可选 TensorRT 后端（服务器）：惰性导入→ONNX导出→engine构建→推理
 │       ├── video_pipeline.py        # ★ 视频级管线（两趟）：抽帧推理落盘 → 统一归一化 → 写视频
 │       ├── postprocess.py           # 稳健归一化、伪彩 colormap、16bit 无损 PNG 导出
 │       ├── temporal.py              # 时序平滑（EMA）与闪烁度量（temporal_gradient）
@@ -81,6 +82,7 @@ SDM/
 ├── scripts/
 │   ├── download_models.py           # 下载指定/全部规格权重到 models/
 │   ├── depth_video.py               # ★ 主入口：视频 → 深度视频（读取 config 默认值，CLI 可覆盖）
+│   ├── build_trt_engine.py          # 服务器一次性预构建 TensorRT engine（ONNX → .engine）
 │   └── batch_infer.py               # 批量处理目录，产出 batch_report.json
 │
 ├── data/
@@ -141,7 +143,8 @@ SDM/
 | 数据布局 | `data/inputs`（入）+ `data/outputs`（出），根目录不设 `outputs/` | 同在 data/ 下但仍分离，避免批量任务自吞输出 |
 | 权重位置 | 本地 `models/<规格>/` 优先，缺失则回退 HF 仓库 ID | 离线可跑、大模型可校验 |
 | 深度尺度 | 相对深度（模型原生输出）+ 全序列统一归一化 | 逐帧各自 min-max 是闪烁主因；需米制换 `_metric` 权重 |
-| 精度/设备 | cuda>mps>cpu 自动，GPU 默认 fp16 | 兼顾 Mac 本地与服务器 |
+| 精度/设备 | **默认 CPU**；`--device cuda/mps` 显式启用，GPU 默认 fp16 | 共享服务器不自动占卡；要 GPU 明说 |
+| 推理后端 | `--backend torch`（默认）/ `tensorrt`；不可用自动回退 torch+警告 | TRT 走 ONNX→engine，仅 `--device cuda`+Linux；`tensorrt` 不入共享 lock |
 | 内存策略 | 两趟管线 + 临时批次文件流式读写 | 长视频不把 float 深度全放内存 |
 | 输出格式 | 8bit 灰度 mp4（主）+ 伪彩 mp4 + 16bit PNG 序列 | 需 EXR 浮点可在此扩展 |
 | 时序处理 | 统一范围 + 可选因果 EMA；`temporal_gradient` 量化闪烁 | 更强方案（光流引导一致性）待定 |

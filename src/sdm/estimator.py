@@ -14,8 +14,36 @@ from PIL import Image
 from sdm.model_loader import load_depth_model
 
 
+def resolve_backend(
+    requested: str | None,
+    *,
+    trt_runtime_available: bool,
+    device: str | None,
+) -> tuple[str, str | None]:
+    """把（请求后端, 环境）解析为（实际后端, 警告信息）。纯函数，便于离线单测。
+
+    规则（与“不可用则自动回退 torch 并告警”一致）：
+      - torch / None → torch（无警告）
+      - tensorrt 但运行时缺失 → 回退 torch + 警告
+      - tensorrt 但设备非 cuda → 回退 torch + 警告
+      - tensorrt 且运行时/设备均就绪 → tensorrt
+    """
+    req = (requested or "torch").strip().lower()
+    if req == "torch":
+        return "torch", None
+    if req == "tensorrt":
+        if not trt_runtime_available:
+            return "torch", "请求了 TensorRT 但运行时不可用（需 NVIDIA GPU + tensorrt，uv sync --group trt），已回退 torch。"
+        if (device or "cpu") != "cuda":
+            return "torch", "TensorRT 仅在 --device cuda 时可用，已回退 torch。"
+        return "tensorrt", None
+    raise ValueError(f"未知后端：{requested}（可选 torch / tensorrt）")
+
+
 class DepthEstimator:
     """封装 DA V2 的加载与推理，供视频管线复用同一份权重。"""
+
+    backend = "torch"
 
     def __init__(
         self,

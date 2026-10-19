@@ -21,8 +21,10 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from sdm.estimator import DepthEstimator
+from sdm.estimator import DepthEstimator, resolve_backend
+from sdm.model_loader import pick_device
 from sdm.postprocess import colorize, normalize_to_uint8, robust_range, save_depth_png16
+from sdm.tensorrt import trt_runtime_available
 from sdm.utils.video_io import iter_frames, open_video_writer, probe_video
 
 # 统计量子采样：每多少帧取一帧、空间上每多少像素取一个
@@ -46,6 +48,7 @@ def estimate_video_depth(
     colormap: int | None = None,
     png16_dir: str | Path | None = None,
     allow_download: bool = True,
+    backend: str = "torch",
     show_progress: bool | None = None,
     logger=print,
 ) -> dict:
@@ -68,6 +71,8 @@ def estimate_video_depth(
         colormap: 给定 cv2.COLORMAP_* 则额外输出伪彩视频。
         png16_dir: 给定目录则额外导出 16bit 无损深度帧序列。
         allow_download: 本地无权重时自动下载到 models/（默认 True）。
+        backend: 推理后端 torch / tensorrt（默认 torch）。tensorrt 需 --device cuda 且装了
+            TensorRT；不可用时自动回退 torch 并打警告（见 sdm.tensorrt）。
         show_progress: True/False 强制开关 tqdm 进度条；None（默认）= 仅当 stderr 是
             TTY 时显示，因此在管道/测试环境自动静默。
         logger: 接收一次性信息行的回调（默认 print）；进度条激活时改用 tqdm.write 以免打断条。
@@ -93,10 +98,32 @@ def estimate_video_depth(
     proc_fps = float(meta["fps"]) / max(stride, 1)  # 已计算深度帧的时间率
     expected = _expected_frames(meta["frame_count"], stride=stride, max_frames=max_frames)
 
-    estimator = DepthEstimator(
-        model, device=device, models_dir=models_dir, allow_download=allow_download
+    # 设备解析一次（None→cpu），供后端判定与估算器共用；GPU 必须显式 --device cuda
+    used_device = pick_device(device).type
+    eff_backend, warn = resolve_backend(
+        backend, trt_runtime_available=trt_runtime_available(), device=used_device
     )
-    _log(f"[sdm] model={model} device={estimator.device} 预计帧数≈{expected}")
+    if warn:
+        _log(f"[sdm] {warn}")
+    estimator = None
+    if eff_backend == "tensorrt":
+        try:
+            from sdm.tensorrt import TensorRTEstimator
+
+            estimator = TensorRTEstimator(
+                model, device=used_device, models_dir=models_dir,
+                allow_download=allow_download, input_size=(int(meta["height"]), int(meta["width"])),
+                opt_batch=batch_size, logger=_log,
+            )
+        except Exception as exc:  # noqa: BLE001  初始化任何失败都退回 torch，保证任务不中断
+            _log(f"[sdm] TensorRT 初始化失败，回退 torch：{exc}")
+            estimator = None
+            eff_backend = "torch"
+    if estimator is None:
+        estimator = DepthEstimator(
+            model, device=used_device, models_dir=models_dir, allow_download=allow_download
+        )
+    _log(f"[sdm] model={model} device={used_device} backend={eff_backend} 预计帧数≈{expected}")
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="sdm_depth_"))
     frame_ids: list[int] = []          # 与临时批次文件顺序一致的原视频帧号
@@ -186,6 +213,7 @@ def estimate_video_depth(
     return {
         "model": model,
         "device": str(estimator.device),
+        "backend": eff_backend,
         "input": str(input_video),
         "output": str(output_video),
         "frames": n,
