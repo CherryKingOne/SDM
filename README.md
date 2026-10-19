@@ -1,5 +1,8 @@
 # SDM — 视频深度估计
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.12-blue.svg)
+
 用 [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2)（Small / Base / Large）
 从视频中**逐帧估计深度**，输出**深度视频**（灰度 mp4 / 可选伪彩 mp4 / 可选 16bit 无损深度帧序列）。
 模型统一通过 Hugging Face **`transformers`** 的 `AutoModelForDepthEstimation` 加载，本地无权重时会自动下载安装。
@@ -31,6 +34,7 @@
 - [目录约定](#目录约定)
 - [测试](#测试)
 - [常见问题](#常见问题)
+- [许可证](#许可证)
 
 ---
 
@@ -60,18 +64,19 @@ uv add <pkg>               # 新增依赖（自动更新 pyproject.toml + uv.loc
 
 ## 快速开始
 
-仓库 `data/inputs/` 自带示例视频（`sample.mp4`、`long_clip.mp4`），克隆后即可直接跑：
+`data/inputs/` 属于输入区，被 `.gitignore` 忽略（**克隆后是空的**，仓库不分发视频素材）。
+把要处理的视频放进去即可，下文以 `data/inputs/clip.mp4` 为例：
 
 ```bash
 # 1) 最简：小模型、全部帧、输出灰度深度视频
-uv run python scripts/depth_video.py --input data/inputs/sample.mp4 --model small
-#    → 输出写到 data/outputs/sample_depth.mp4，并在终端打印运行摘要 JSON
+uv run python scripts/depth_video.py --input data/inputs/clip.mp4 --model small
+#    → 输出写到 data/outputs/clip_depth.mp4，并在终端打印运行摘要 JSON
 
 # 2) 大模型 + 抽帧预览 + 伪彩 + 16bit 无损序列 + 时序平滑
 uv run python scripts/depth_video.py \
-    -i data/inputs/sample.mp4 -m large \
+    -i data/inputs/clip.mp4 -m large \
     --stride 2 --colormap inferno \
-    --png16 data/outputs/sample_depth_frames \
+    --png16 data/outputs/clip_depth_frames \
     --smooth-alpha 0.5
 
 # 3) 预先批量下载权重（适合开工前一次性拉齐 / 拷给离线机器）
@@ -79,7 +84,7 @@ uv run python scripts/download_models.py --sizes small base large
 uv run python scripts/download_models.py --all      # 全部可用规格（large 约 1.3GB）
 
 # 4) 禁止自动下载：本地缺权重直接报错（CI / 离线环境）
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --no-download
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --no-download
 
 # 5) 批量处理整个目录（只扫 data/inputs，结果写 data/outputs）
 uv run python scripts/batch_infer.py --input-dir data/inputs --model small --stride 2
@@ -150,13 +155,13 @@ uv run python scripts/depth_video.py --input <视频> [选项]
 
 ```bash
 # 冒烟测试：只跑前 10 帧快速看效果
-uv run python scripts/depth_video.py -i data/inputs/long_clip.mp4 -m small --max-frames 10
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m small --max-frames 10
 
 # 交付用：base 模型、全帧、强制 CPU
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 -m base --device cpu -o data/outputs/mine.mp4
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m base --device cpu -o data/outputs/mine.mp4
 
 # 把摘要写入文件，方便脚本化 / 批量收集
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --summary-json data/outputs/sample_summary.json
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --summary-json data/outputs/clip_summary.json
 ```
 
 ### 2. `download_models.py`（预下载权重）
@@ -234,11 +239,11 @@ uv run python evaluation/eval.py --pred <预测帧目录> --gt <GT帧目录> [--
 
 ```bash
 # 先生成 16bit 无损序列
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --png16 data/outputs/sample_depth_frames
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --png16 data/outputs/clip_depth_frames
 # 再对齐评估
 uv run python evaluation/eval.py \
-    --pred data/outputs/sample_depth_frames \
-    --gt data/gt/sample --align
+    --pred data/outputs/clip_depth_frames \
+    --gt data/gt/clip --align
 ```
 
 ---
@@ -256,10 +261,10 @@ uv run python evaluation/eval.py \
 
 ```bash
 # 把输出统一到 30fps
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --output-fps 30
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --output-fps 30
 
 # 输出 60fps（源若是 30fps，会复制帧填充，见下方注意）
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --output-fps 60
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --output-fps 60
 ```
 
 ### ⚠ 关于帧率的两个真相
@@ -281,20 +286,20 @@ uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --output-fps 60
 
 ```bash
 # 想快速看效果（低帧率预览，最省时间）
-uv run python scripts/depth_video.py -i data/inputs/long_clip.mp4 -m small --stride 5 --colormap inferno
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m small --stride 5 --colormap inferno
 
 # 想要可用于 3D/特效的高质量深度（16bit 无损）
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 -m large \
-    --png16 data/outputs/sample_depth_frames
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m large \
+    --png16 data/outputs/clip_depth_frames
 
 # 深度视频有闪烁 → 加时序平滑
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 -m base --smooth-alpha 0.5
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m base --smooth-alpha 0.5
 
 # 前景/背景明暗反了 → 翻转
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 --dark-near
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 --dark-near
 
 # MPS 显存/算子报错 → 降负担
-uv run python scripts/depth_video.py -i data/inputs/sample.mp4 -m small --stride 2 --batch-size 1 --device cpu
+uv run python scripts/depth_video.py -i data/inputs/clip.mp4 -m small --stride 2 --batch-size 1 --device cpu
 ```
 
 ---
@@ -308,8 +313,8 @@ from sdm import estimate_video_depth, load_depth_model, ensure_model, DepthEstim
 
 # A) 视频级管线：输入视频 → 深度视频，返回运行摘要 dict
 summary = estimate_video_depth(
-    "data/inputs/sample.mp4",
-    "data/outputs/sample_depth.mp4",
+    "data/inputs/clip.mp4",
+    "data/outputs/clip_depth.mp4",
     model="base",
     stride=2,
     smooth_alpha=0.5,
@@ -413,3 +418,19 @@ SDM_MODEL_TEST=1 uv run pytest -q   # 额外跑真实权重加载 + 前向推理
 | `from_pretrained` 找不到配置 | 下成了不带 `-hf` 的仓库 | 用 `download_models.py` 重下 `-hf` 规格 |
 
 更多参数含义、性能实测数据见 [docs/usage.md](docs/usage.md)。
+
+---
+
+## 许可证
+
+本项目采用 **MIT License**，详见 [LICENSE](LICENSE)。
+
+需要注意，代码之外你拉到的模型权重**不受本仓库许可证覆盖**：
+
+| 组件 | 许可证 | 归属 |
+|---|---|---|
+| 本仓库代码与文档 | MIT | 本项目 |
+| Depth Anything V2 模型结构与权重 | 以其官方仓库声明为准 | [`DepthAnything/Depth-Anything-V2`](https://github.com/DepthAnything/Depth-Anything-V2) |
+| `transformers` / `torch` / `opencv-python` 等依赖 | 各自上游许可证 | 各上游项目 |
+
+权重由 `scripts/download_models.py` 从 Hugging Face 拉取，商用/分发前请先核对上游许可证条款。
